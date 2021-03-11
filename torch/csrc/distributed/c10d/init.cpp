@@ -1049,6 +1049,13 @@ Arguments:
               py::arg("opts") = ::c10d::BarrierOptions(),
               py::call_guard<py::gil_scoped_release>());
 
+  // base ProcessGroup::Options binding
+  auto processGroupOptions =
+      intrusive_ptr_class_<::c10d::ProcessGroup::Options>(
+          module, "ProcessGroupOptions")
+          .def_readonly("backend", &::c10d::ProcessGroup::Options::backend)
+          .def_readwrite("timeout", &::c10d::ProcessGroup::Options::timeout);
+
 #ifndef _WIN32
   module.def(
       "_round_robin_process_groups",
@@ -1071,8 +1078,8 @@ Arguments:
 
   shared_ptr_class_<::gloo::transport::Device>(processGroupGloo, "Device");
 
-  shared_ptr_class_<::c10d::ProcessGroupGloo::Options>(
-      processGroupGloo, "Options")
+  intrusive_ptr_class_<::c10d::ProcessGroupGloo::Options>(
+      processGroupGloo, "Options", processGroupOptions)
       .def(py::init<>())
       .def_readwrite("devices", &::c10d::ProcessGroupGloo::Options::devices)
       .def_readwrite("timeout", &::c10d::ProcessGroupGloo::Options::timeout)
@@ -1100,32 +1107,32 @@ Arguments:
               const c10::intrusive_ptr<::c10d::Store>&,
               int,
               int,
-              ::c10d::ProcessGroupGloo::Options>(),
+              c10::intrusive_ptr<::c10d::ProcessGroupGloo::Options>>(),
           py::call_guard<py::gil_scoped_release>())
       .def(
           py::init([](const c10::intrusive_ptr<::c10d::Store>& store,
                       int rank,
                       int size,
                       std::chrono::milliseconds timeout) {
-            ::c10d::ProcessGroupGloo::Options options;
+            auto options = ::c10d::ProcessGroupGloo::Options::create();
 
             // Use interfaces listed in "GLOO_SOCKET_IFNAME", if set.
             char* ifnameEnv = getenv(::c10d::GLOO_SOCKET_IFNAME_ENV);
             if (ifnameEnv) {
               for (const auto& iface : ::c10d::split(',', ifnameEnv)) {
-                options.devices.push_back(
+                options->devices.push_back(
                     ::c10d::ProcessGroupGloo::createDeviceForInterface(iface));
               }
             } else {
               // If no hostname is specified, this function looks up
               // the machine's hostname and returns a device instance
               // associated with the address that the hostname resolves to.
-              options.devices.push_back(
+              options->devices.push_back(
                   ::c10d::ProcessGroupGloo::createDefaultDevice());
             }
 
-            options.timeout = timeout;
-            options.threads = options.devices.size() * 2;
+            options->timeout = timeout;
+            options->threads = options->devices.size() * 2;
             return c10::make_intrusive<::c10d::ProcessGroupGloo>(
                 store, rank, size, options);
           }),
@@ -1153,16 +1160,15 @@ Arguments:
                           int size,
                           const std::chrono::milliseconds& timeout) {
                 auto options = ::c10d::ProcessGroupNCCL::Options::create();
-                options->isHighPriorityStream = false;
-                options->opTimeout = timeout;
+                options->is_high_priority_stream = false;
+                options->timeout = timeout;
                 return c10::make_intrusive<::c10d::ProcessGroupNCCL>(
                     store, rank, size, options);
               }),
               py::arg("store"),
               py::arg("rank"),
               py::arg("size"),
-              py::arg("timeout") = std::chrono::milliseconds(
-                  ::c10d::ProcessGroupNCCL::kProcessGroupNCCLOpTimeoutMillis),
+              py::arg("timeout") = kProcessGroupDefaultTimeout,
               py::call_guard<py::gil_scoped_release>());
 
   intrusive_ptr_class_<::c10d::ProcessGroupNCCL::Options>(
@@ -1170,9 +1176,8 @@ Arguments:
       .def(py::init<>())
       .def_readwrite(
           "is_high_priority",
-          &::c10d::ProcessGroupNCCL::Options::isHighPriorityStream)
-      .def_readwrite(
-          "op_timeout", &::c10d::ProcessGroupNCCL::Options::opTimeout);
+          &::c10d::ProcessGroupNCCL::Options::is_high_priority_stream)
+      .def_readwrite("op_timeout", &::c10d::ProcessGroupNCCL::Options::timeout);
   processGroupNCCL.def_static(
       "_group_start", []() { ::c10d::ProcessGroupNCCL::groupStart(); });
   processGroupNCCL.def_static(
