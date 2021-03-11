@@ -2,7 +2,9 @@
 
 #include <cstring>
 #include <unordered_map>
-
+#ifndef C10_MOBILE
+#include <sys/mman.h>
+#endif
 #include <c10/core/Allocator.h>
 #include <c10/util/Logging.h>
 #include <c10/util/numa.h>
@@ -22,6 +24,7 @@ constexpr size_t gAlignment = 16;
 #else
 // Use 64-byte alignment should be enough for computation up to AVX512.
 constexpr size_t gAlignment = 64;
+constexpr size_t gHugePage2MB = 1<<21;
 #endif
 
 using MemoryDeleter = void (*)(void*);

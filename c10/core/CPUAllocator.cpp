@@ -38,6 +38,9 @@ void memset_junk(void* data, size_t num) {
   }
 }
 
+
+
+
 void* alloc_cpu(size_t nbytes) {
   if (nbytes == 0) {
     return nullptr;
@@ -55,7 +58,20 @@ void* alloc_cpu(size_t nbytes) {
 #elif defined(_MSC_VER)
   data = _aligned_malloc(nbytes, gAlignment);
 #else
-  int err = posix_memalign(&data, gAlignment, nbytes);
+
+  int err=0;
+  
+  if(nbytes >= gHugePage2MB) {
+    err = posix_memalign(&data, gHugePage2MB, nbytes);
+    if(err==0)
+    {
+      madvise(data, nbytes, MADV_HUGEPAGE); /* Don't need check err */         
+    } 
+     
+  } else {
+   err = posix_memalign(&data, gAlignment, nbytes);   
+  }
+  
   if (err != 0) {
     CAFFE_THROW(
         "DefaultCPUAllocator: can't allocate memory: you tried to allocate ",
@@ -65,6 +81,9 @@ void* alloc_cpu(size_t nbytes) {
         " (",
         strerror(err),
         ")");
+
+  
+
   }
 #endif
 
