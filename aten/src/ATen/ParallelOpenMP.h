@@ -2,7 +2,9 @@
 
 #include <cstddef>
 #include <exception>
-
+#include "ThreadPool.h"
+#include <mutex>
+#include <memory>
 #ifdef _OPENMP
 #define INTRA_OP_PARALLEL
 
@@ -10,6 +12,18 @@
 #endif
 
 namespace at {
+template<class T>
+T getTHVAL() {
+
+     T  ret = 10;
+     const char* v = std::getenv("CUSTOM_THREAD");
+     
+     if(v)
+       ret = atoll(v);
+     std::cout << "CUSTOM_THREAD="<< ret << std::endl;      
+     return ret;
+
+}
 
 template <class F>
 inline void parallel_for(
@@ -22,6 +36,42 @@ inline void parallel_for(
   if (begin >= end) {
     return;
   }
+
+
+  if(grain_size==3000 && ((end - begin) > grain_size) ) {
+  static int64_t num_threads = getTHVAL<int64_t>();
+  static my::ThreadPool pool(num_threads);
+  thread_local std::vector<std::future<void>> results;
+  results.clear(); 
+ 
+  if (grain_size > 0) {
+      num_threads = std::min(num_threads, divup((end - begin), grain_size));
+    }
+
+  int64_t chunk_size = divup((end - begin), num_threads);
+ //static std::mutex mx;
+ // std::lock_guard<std::mutex> l(mx);
+ // std::cout << "num_threads="<< num_threads  << std::hex << " 0x" << std::this_thread::get_id() << std::dec << " chunk="<< chunk_size << " grain_size="<< grain_size << " size="<< (end - begin) << std::endl;
+  for(int64_t i=0;i<num_threads;++i)
+  {
+      int64_t begin_tid = begin + i * chunk_size;
+      results.emplace_back(pool.enqueue([&](){
+
+             f(begin_tid, std::min(end, chunk_size + begin_tid));
+          //   std::cout << "done" << std::endl;
+      }));   
+   
+  }
+
+  for(auto && result: results)
+                       result.get();
+
+  
+
+
+   return;
+  }
+ 
 #ifdef _OPENMP
   std::atomic_flag err_flag = ATOMIC_FLAG_INIT;
   std::exception_ptr eptr;
