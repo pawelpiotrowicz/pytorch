@@ -57,6 +57,14 @@ static bool is_constant_index(int ntensor, const int64_t* strides) {
   return true;
 }
 
+int get_grain_size() {
+const char * own_grain_size = std::getenv("GRAIN_SIZE_INDEXKERNEL");
+int grain_size = 3000;
+if(own_grain_size) grain_size = atoi(own_grain_size);
+std::cout << "GRAIN_SIZE_INDEXKERNEL="<< grain_size << std::endl;
+return grain_size;
+}
+
 template <typename scalar_t, typename func_t>
 void cpu_index_kernel(TensorIterator& iter, IntArrayRef index_size, IntArrayRef index_stride,
                       const func_t& f, bool serial_execution=false)
@@ -65,7 +73,7 @@ void cpu_index_kernel(TensorIterator& iter, IntArrayRef index_size, IntArrayRef 
   // When launch the index parallel version, set a relative samll grain size less than the INTERNAL::GRAIN_SIZE
   // to make the whole available thread numbers get more balanced work load and a better cache location.
   // The grain size here is chosen by the op benchmark to overcome the thread launch overhead
-  const int index_parallel_grain_size = 3000;
+  const static int index_parallel_grain_size = get_grain_size();
   auto loop = [&](char** data, const int64_t* strides, int64_t n) {
     auto indexer = Indexer(ntensor - 2, &data[2], &strides[2], index_size, index_stride);
     char* dst = data[0];
